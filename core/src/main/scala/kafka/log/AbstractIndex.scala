@@ -109,18 +109,24 @@ abstract class AbstractIndex[K, V](@volatile var file: File, val baseOffset: Lon
 
   @volatile
   protected var mmap: MappedByteBuffer = {
+    // 第1步：创建索引文件
     val newlyCreated = file.createNewFile()
+    // 第2步：以writable指定的方式（读写方式或只读方式）打开索引文件
     val raf = if (writable) new RandomAccessFile(file, "rw") else new RandomAccessFile(file, "r")
     try {
       /* pre-allocate the file if necessary */
       if(newlyCreated) {
-        if(maxIndexSize < entrySize)
+        if(maxIndexSize < entrySize)  // 预设的索引文件大小不能太小，如果连一个索引项都保存不了，直接抛出异常
           throw new IllegalArgumentException("Invalid max index size: " + maxIndexSize)
+        // 第3步：设置索引文件长度，roundDownToExactMultiple计算的是不超过maxIndexSize的最大整数倍entrySize
+        // 比如maxIndexSize=1234567，entrySize=8，那么调整后的文件长度为1234560
         raf.setLength(roundDownToExactMultiple(maxIndexSize, entrySize))
       }
 
       /* memory-map the file */
+      // 第4步：更新索引长度字段_length
       _length = raf.length()
+      // 第5步：创建MappedByteBuffer对象
       val idx = {
         if (writable)
           raf.getChannel.map(FileChannel.MapMode.READ_WRITE, 0, _length)
@@ -366,12 +372,16 @@ abstract class AbstractIndex[K, V](@volatile var file: File, val baseOffset: Lon
 
   /**
    * Lookup lower and upper bounds for the given target.
+   *
+   * 会有冷热分区
    */
   private def indexSlotRangeFor(idx: ByteBuffer, target: Long, searchEntity: IndexSearchEntity): (Int, Int) = {
     // check if the index is empty
+    // 第1步：如果索引为空，直接返回<-1,-1>对
     if(_entries == 0)
       return (-1, -1)
 
+    // 封装原版的二分查找算法
     def binarySearch(begin: Int, end: Int) : (Int, Int) = {
       // binary search for the entry
       var lo = begin
@@ -390,16 +400,22 @@ abstract class AbstractIndex[K, V](@volatile var file: File, val baseOffset: Lon
       (lo, if (lo == _entries - 1) -1 else lo + 1)
     }
 
+    // 第3步：确认热区首个索引项位于哪个槽。_warmEntries就是所谓的分割线，目前固定为8192字节处
+    // 如果是OffsetIndex，_warmEntries = 8192 / 8 = 1024，即第1024个槽
+    // 如果是TimeIndex，_warmEntries = 8192 / 12 = 682，即第682个槽
     val firstHotEntry = Math.max(0, _entries - 1 - _warmEntries)
     // check if the target offset is in the warm section of the index
+    // 第4步：判断target位移值在热区还是冷区
     if(compareIndexEntry(parseEntry(idx, firstHotEntry), target, searchEntity) < 0) {
-      return binarySearch(firstHotEntry, _entries - 1)
+      return binarySearch(firstHotEntry, _entries - 1) // 如果在热区，搜索热区
     }
 
     // check if the target offset is smaller than the least offset
+    // 第5步：确保target位移值不能小于当前最小位移值
     if(compareIndexEntry(parseEntry(idx, 0), target, searchEntity) > 0)
       return (-1, 0)
 
+    // 第6步：如果在冷区，搜索冷区
     return binarySearch(0, firstHotEntry)
   }
 

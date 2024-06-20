@@ -101,6 +101,7 @@ class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable:
   }
 
   /**
+   * TimeIndex 添加
    * Attempt to append a time index entry to the time index.
    * The new entry is appended only if both the timestamp and offsets are greater than the last appended timestamp and
    * the last appended offset.

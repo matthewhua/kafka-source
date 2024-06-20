@@ -17,6 +17,7 @@ import org.ajoberstar.grgit.Grgit
 
 buildscript {
   repositories {
+    maven { url "https://maven.aliyun.com/repository/central" }
     mavenCentral()
     jcenter()
     maven {
@@ -50,6 +51,7 @@ apply from: "$rootDir/gradle/dependencies.gradle"
 allprojects {
 
   repositories {
+    maven { url "https://maven.aliyun.com/repository/central" }
     mavenCentral()
   }
   
@@ -167,6 +169,7 @@ subprojects {
 
   uploadArchives {
     repositories {
+      maven { url "https://maven.aliyun.com/repository/central" }
       signing {
           required { shouldSign }
           sign configurations.archives

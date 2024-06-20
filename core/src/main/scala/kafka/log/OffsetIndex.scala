@@ -25,28 +25,28 @@ import kafka.utils.CoreUtils.inLock
 import org.apache.kafka.common.errors.InvalidOffsetException
 
 /**
- * An index that maps offsets to physical file locations for a particular log segment. This index may be sparse:
+ * an index that maps offsets to physical file locations for a particular log segment. this index may be sparse:
  * that is it may not hold an entry for all messages in the log.
  *
- * The index is stored in a file that is pre-allocated to hold a fixed maximum number of 8-byte entries.
+ * the index is stored in a file that is pre-allocated to hold a fixed maximum number of 8-byte entries.
  *
- * The index supports lookups against a memory-map of this file. These lookups are done using a simple binary search variant
+ * the index supports lookups against a memory-map of this file. these lookups are done using a simple binary search variant
  * to locate the offset/location pair for the greatest offset less than or equal to the target offset.
  *
- * Index files can be opened in two ways: either as an empty, mutable index that allows appends or
- * an immutable read-only index file that has previously been populated. The makeReadOnly method will turn a mutable file into an
- * immutable one and truncate off any extra bytes. This is done when the index file is rolled over.
+ * index files can be opened in two ways: either as an empty, mutable index that allows appends or
+ * an immutable read-only index file that has previously been populated. the makereadonly method will turn a mutable file into an
+ * immutable one and truncate off any extra bytes. this is done when the index file is rolled over.
  *
- * No attempt is made to checksum the contents of this file, in the event of a crash it is rebuilt.
+ * no attempt is made to checksum the contents of this file, in the event of a crash it is rebuilt.
  *
- * The file format is a series of entries. The physical format is a 4 byte "relative" offset and a 4 byte file location for the
- * message with that offset. The offset stored is relative to the base offset of the index file. So, for example,
- * if the base offset was 50, then the offset 55 would be stored as 5. Using relative offsets in this way let's us use
+ * the file format is a series of entries. the physical format is a 4 byte "relative" offset and a 4 byte file location for the
+ * message with that offset. the offset stored is relative to the base offset of the index file. so, for example,
+ * if the base offset was 50, then the offset 55 would be stored as 5. using relative offsets in this way let's us use
  * only 4 bytes for the offset.
  *
- * The frequency of entries is up to the user of this class.
+ * the frequency of entries is up to the user of this class.
  *
- * All external APIs translate from relative offsets to full offsets, so users of this class do not interact with the internal
+ * all external apis translate from relative offsets to full offsets, so users of this class do not interact with the internal
  * storage format.
  */
 // Avoid shadowing mutable `file` in AbstractIndex
@@ -140,15 +140,22 @@ class OffsetIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writabl
    */
   def append(offset: Long, position: Int) {
     inLock(lock) {
+      // 第1步：判断索引文件未写满
       require(!isFull, "Attempt to append to a full index (size = " + _entries + ").")
+      // 第2步：必须满足以下条件之一才允许写入索引项：
+      // 条件1：当前索引文件为空
+      // 条件2：要写入的位移大于当前所有已写入的索引项的位移——Kafka规定索引项中的位移值必须是单调增加的
       if (_entries == 0 || offset > _lastOffset) {
         trace(s"Adding index entry $offset => $position to ${file.getAbsolutePath}")
-        mmap.putInt(relativeOffset(offset))
-        mmap.putInt(position)
+        mmap.putInt(relativeOffset(offset))  // 第3步A：向mmap中写入相对位移值
+        mmap.putInt(position) // 第3步B：向mmap中写入物理位置信息
+        // 第4步：更新其他元数据统计信息，如当前索引项计数器_entries和当前索引项最新位移值_lastOffset
         _entries += 1
         _lastOffset = offset
+        // 第5步：执行校验。写入的索引项格式必须符合要求，即索引项个数*单个索引项占用字节数匹配当前文件物理大小，否则说明文件已损坏
         require(_entries * entrySize == mmap.position(), entries + " entries but file position in index is " + mmap.position() + ".")
       } else {
+        // 如果第2步中两个条件都不满足，不能执行写入索引项操作，抛出异常
         throw new InvalidOffsetException(s"Attempt to append an offset ($offset) to position $entries no larger than" +
           s" the last offset appended (${_lastOffset}) to ${file.getAbsolutePath}.")
       }
