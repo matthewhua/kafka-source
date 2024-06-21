@@ -583,17 +583,17 @@ private[kafka] class Processor(val id: Int,
   private var nextConnectionIndex = 0
 
   override def run() {
-    startupComplete()
+    startupComplete() // 等待Processor线程启动完成
     try {
       while (isRunning) {
         try {
           // setup any new connections that have been queued up
-          configureNewConnections()
+          configureNewConnections() // 创建新连接
           // register any new responses for writing
-          processNewResponses()
-          poll()
-          processCompletedReceives()
-          processCompletedSends()
+          processNewResponses() // 发送Response，并将Response放入到inflightResponses临时队列
+          poll() // 执行NIO poll，获取对应SocketChannel上准备就绪的I/O操作
+          processCompletedReceives() // 将接收到的Request放入Request队列
+          processCompletedSends() // 为临时Response队列中的Response执行回调逻辑
           processDisconnected()
         } catch {
           // We catch all the throwables here to prevent the processor thread from exiting. We do this because
