@@ -273,7 +273,7 @@ object RequestChannel extends Logging {
 
     def onComplete: Option[Send => Unit] = None
 
-    override def toString: String
+    def toString: String
   }
 
   /** responseAsString should only be defined if request logging is enabled */
